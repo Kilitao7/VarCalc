@@ -11,7 +11,7 @@ STATE_FILE = "state.json"
 class VariableCalculator:
     def __init__(self, root):
         self.root = root
-        self.root.title("变量计算器")
+        self.root.title("VarCalc")
         self.font_family = "Consolas"
         self.font_size = 12
         self.default_font = (self.font_family, self.font_size)
@@ -194,13 +194,64 @@ class VariableCalculator:
         self.update_all(tab)
 
     def adjust_row_size(self, tab, text_widget, result_label):
+
+        def pixel_to_chars(pixel, font):
+            """把像素宽度转换为 Text.width 的字符数（基于 '0' 的像素宽做二分查找）"""
+            if pixel <= 0:
+                return 1
+            zero_w = font.measure("0") or 7
+            # upper bound 初始估计
+            hi = max(1, int(pixel / zero_w) + 3)
+            # 保证 hi 足够大
+            while font.measure("0" * hi) < pixel:
+                hi *= 2
+            lo = 1
+            while lo < hi:
+                mid = (lo + hi) // 2
+                if font.measure("0" * mid) < pixel:
+                    lo = mid + 1
+                else:
+                    hi = mid
+            return max(1, lo)
+
         self.root.update_idletasks()
         font = tkfont.Font(font=text_widget['font'])
-        avg_char_w = font.measure('0') or 7
+
         content = text_widget.get("1.0", "end-1c")
         lines = content.split("\n") if content else [""]
 
-        longest_pixel = max((font.measure(line) for line in lines), default=0)
+        # === 临时关闭自动换行以测量逻辑行的完整像素宽 ===
+        old_wrap = text_widget.cget("wrap")
+        try:
+            text_widget.config(wrap="none")
+            self.root.update_idletasks()
+
+            def measure_line_by_bbox(line_index, line_text):
+                """尝试用 bbox 测量整行像素宽，失败则回退到逐字符累计"""
+                if not line_text:
+                    return font.measure("0")  # 空行设为一个最小宽度
+                start_idx = f"{line_index}.0"
+                end_idx = f"{line_index}.end-1c"
+                try:
+                    bbox_start = text_widget.bbox(start_idx)
+                    bbox_end = text_widget.bbox(end_idx)
+                    if bbox_start and bbox_end:
+                        x_start = bbox_start[0]
+                        x_end = bbox_end[0] + bbox_end[2]
+                        # 有时 bbox 的 x 起点并非 0（存在内部 padding），直接取差值
+                        return max(0, x_end - x_start)
+                except Exception:
+                    pass
+                # 回退：逐字符测量（较慢，但稳妥）
+                return sum(font.measure(ch) for ch in line_text)
+
+            longest_pixel = max((measure_line_by_bbox(i + 1, lines[i]) for i in range(len(lines))), default=0)
+        finally:
+            # 恢复原来的换行设置
+            text_widget.config(wrap=old_wrap)
+            self.root.update_idletasks()
+
+        # 可用像素宽度 = 画布宽 - 结果标签宽 - padding
         canvas_w = tab.canvas.winfo_width()
         if canvas_w <= 1:
             canvas_w = max(self.root.winfo_width(), 300)
@@ -208,13 +259,19 @@ class VariableCalculator:
         padding = 30
         available_pixel = max(60, canvas_w - result_req - padding)
 
-        if longest_pixel <= available_pixel:
-            max_chars = max((len(line) for line in lines))
-            width_chars = max(1, max_chars + 1)
+        # 给一点额外 margin 防止紧贴
+        margin_pixel = 6
+        needed_pixel = longest_pixel + margin_pixel
+
+        if needed_pixel <= available_pixel:
+            # 一行能完整显示，不需要换行
+            width_chars = pixel_to_chars(needed_pixel, font)
             height_lines = max(1, len(lines))
         else:
-            width_chars = max(1, int(available_pixel / avg_char_w) - 1)
-            height_lines = max(1, math.ceil(longest_pixel / available_pixel)) if available_pixel>0 else max(1,len(lines))
+            # 宽度受限，需要换行：以 available_pixel 为列宽换算列数，并估算需要的行数
+            width_chars = pixel_to_chars(available_pixel - 2, font)  # 留一点余量
+            # 需要的视觉行数 = ceil(最长行像素 / available_pixel)
+            height_lines = max(1, math.ceil(longest_pixel / max(1, available_pixel)))
 
         try:
             text_widget.config(width=width_chars, height=height_lines)
