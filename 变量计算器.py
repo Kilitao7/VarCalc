@@ -136,6 +136,26 @@ class VariableCalculator:
         tab.add_button.pack_forget()
         tab.add_button.pack(pady=5)
 
+        # def on_double_click(event, text_widget):
+        #     # 获取点击索引
+        #     index = text_widget.index(f"@{event.x},{event.y}")
+        #     line, char = map(int, index.split('.'))
+        #     # 获取当前行内容
+        #     line_text = text_widget.get(f"{line}.0", f"{line}.end")
+        #     # 计算点击位置在行文本中的偏移
+        #     offset = char
+        #     # 左右扩展数字范围
+        #     left = offset
+        #     right = offset
+        #     while left > 0 and (line_text[left - 1].isdigit() or line_text[left - 1] == "."):
+        #         left -= 1
+        #     while right < len(line_text) and (line_text[right].isdigit() or line_text[right] == "."):
+        #         right += 1
+        #     # 选中数字
+        #     text_widget.tag_remove("sel", f"{line}.0", f"{line}.end")
+        #     if left != right:
+        #         text_widget.tag_add("sel", f"{line}.{left}", f"{line}.{right}")
+        #     return "break"  # 🔹关键，阻止默认双击行为
         def on_double_click(event, text_widget):
             # 获取点击索引
             index = text_widget.index(f"@{event.x},{event.y}")
@@ -144,18 +164,50 @@ class VariableCalculator:
             line_text = text_widget.get(f"{line}.0", f"{line}.end")
             # 计算点击位置在行文本中的偏移
             offset = char
-            # 左右扩展数字范围
+
+            # 先尝试处理引号内内容的选择
+            quote_left = -1
+            quote_right = -1
+
+            # 检查是否在双引号内
+            if offset < len(line_text) and line_text[offset] == '"':
+                # 点击位置就是引号，查找匹配的引号
+                quote_left = offset
+                # 从当前位置向后查找下一个引号
+                quote_right = line_text.find('"', offset + 1)
+            elif offset > 0 and offset <= len(line_text):
+                # 检查是否在两个引号之间
+                # 查找左边最近的引号
+                quote_left = line_text.rfind('"', 0, offset)
+                if quote_left != -1:
+                    # 查找右边对应的引号
+                    quote_right = line_text.find('"', quote_left + 1)
+                    # 确保点击位置在两个引号之间
+                    if quote_right != -1 and quote_left < offset < quote_right:
+                        pass  # 已经找到有效的引号对
+                    else:
+                        quote_left = -1
+                        quote_right = -1
+
+            # 如果找到有效的引号对，则选中引号内的内容
+            if quote_left != -1 and quote_right != -1:
+                text_widget.tag_remove("sel", f"{line}.0", f"{line}.end")
+                # 选中引号之间的内容（不包括引号本身）
+                text_widget.tag_add("sel", f"{line}.{quote_left + 1}", f"{line}.{quote_right}")
+                return "break"  # 阻止默认双击行为
+
+            # 否则执行原有的数字选择功能
             left = offset
             right = offset
-            while left > 0 and line_text[left - 1].isdigit():
+            while left > 0 and (line_text[left - 1].isdigit() or line_text[left - 1] == "."):
                 left -= 1
-            while right < len(line_text) and line_text[right].isdigit():
+            while right < len(line_text) and (line_text[right].isdigit() or line_text[right] == "."):
                 right += 1
             # 选中数字
             text_widget.tag_remove("sel", f"{line}.0", f"{line}.end")
             if left != right:
                 text_widget.tag_add("sel", f"{line}.{left}", f"{line}.{right}")
-            return "break"  # 🔹关键，阻止默认双击行为
+            return "break"  # 阻止默认双击行为
 
         text.bind("<Double-Button-1>", lambda e, tw=text: on_double_click(e, tw))
 
