@@ -136,26 +136,31 @@ class VariableCalculator:
         tab.add_button.pack_forget()
         tab.add_button.pack(pady=5)
 
-        # def on_double_click(event, text_widget):
-        #     # 获取点击索引
-        #     index = text_widget.index(f"@{event.x},{event.y}")
-        #     line, char = map(int, index.split('.'))
-        #     # 获取当前行内容
-        #     line_text = text_widget.get(f"{line}.0", f"{line}.end")
-        #     # 计算点击位置在行文本中的偏移
-        #     offset = char
-        #     # 左右扩展数字范围
-        #     left = offset
-        #     right = offset
-        #     while left > 0 and (line_text[left - 1].isdigit() or line_text[left - 1] == "."):
-        #         left -= 1
-        #     while right < len(line_text) and (line_text[right].isdigit() or line_text[right] == "."):
-        #         right += 1
-        #     # 选中数字
-        #     text_widget.tag_remove("sel", f"{line}.0", f"{line}.end")
-        #     if left != right:
-        #         text_widget.tag_add("sel", f"{line}.{left}", f"{line}.{right}")
-        #     return "break"  # 🔹关键，阻止默认双击行为
+        # ====== 新增：自定义粘贴逻辑，去掉 Excel 自带换行 ======
+        def clean_paste(event, t=tab, tw=text, rl=result_label):
+            try:
+                pasted = tw.selection_get(selection='CLIPBOARD')
+            except tk.TclError:
+                return "break"  # 没有剪贴板内容
+
+            # 去掉 Excel 自带的结尾换行
+            pasted = pasted.rstrip("\r\n")
+
+            # 如果有选中内容，先删除
+            if tw.tag_ranges("sel"):
+                tw.delete("sel.first", "sel.last")
+
+            # 插入清理过的文本
+            tw.insert("insert", pasted)
+
+            # 更新显示
+            self.adjust_row_size(t, tw, rl)
+            self.update_all(t)
+
+            return "break"  # 阻止默认粘贴
+
+        text.bind("<<Paste>>", clean_paste)
+
         def on_double_click(event, text_widget):
             # 获取点击索引
             index = text_widget.index(f"@{event.x},{event.y}")
@@ -212,8 +217,6 @@ class VariableCalculator:
         text.bind("<Double-Button-1>", lambda e, tw=text: on_double_click(e, tw))
 
         text.bind("<KeyRelease>", lambda e, t=tab: (self.adjust_row_size(t, text, result_label), self.update_all(t)))
-        text.bind("<<Paste>>", lambda e, t=tab: self.root.after(
-            10, lambda: (self.adjust_row_size(t, text, result_label), self.update_all(t))))
 
         def on_backspace(event, t=tab, tw=text, rf=row_frame):
             content = tw.get("1.0", "end-1c")
