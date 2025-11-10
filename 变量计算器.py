@@ -174,15 +174,24 @@ class VariableCalculator:
         entry.bind("<FocusOut>", save_name)
 
     # ================= 输入框逻辑 =================
-    def add_input_row(self, tab, initial_text=""):
+    def add_input_row(self, tab, initial_text="", insert_after_current=True):
         """
         添加输入行
         :param tab: 标签页框架
         :param initial_text: 初始文本
+        :param insert_after_current: 是否在当前选中行后插入
         """
         # 创建行框架
         row_frame = tk.Frame(tab.frame, bg="white")
-        row_frame.pack(fill="x", pady=3, anchor="w")
+
+        # 确定插入位置
+        insert_index = len(tab.entries)
+        if insert_after_current:
+            # 查找当前焦点所在的行
+            for i, (text_widget, _, _) in enumerate(tab.entries):
+                if text_widget.focus_get() == text_widget:
+                    insert_index = i + 1
+                    break
 
         # 创建文本输入框
         text = tk.Text(row_frame, height=1, wrap="word", font=self.default_font,
@@ -199,8 +208,19 @@ class VariableCalculator:
         # 添加双击复制功能
         result_label.bind("<Double-Button-1>", lambda e, rl=result_label: self.copy_result(rl))
 
-        # 将输入框、结果标签和行框架添加到标签页条目列表
-        tab.entries.append((text, result_label, row_frame))
+        # 将输入框、结果标签和行框架插入到指定位置
+        tab.entries.insert(insert_index, (text, result_label, row_frame))
+
+        # 打包行框架到指定位置
+        if insert_index == len(tab.entries) - 1:
+            # 如果是最后一行，直接打包
+            row_frame.pack(fill="x", pady=3, anchor="w")
+        else:
+            # 否则插入到指定位置
+            row_frame.pack_forget()
+            row_frame.pack(fill="x", pady=3, anchor="w",
+                           before=tab.entries[insert_index + 1][2] if insert_index + 1 < len(tab.entries) else None)
+
 
         # 重新放置添加按钮
         tab.add_button.pack_forget()
@@ -328,10 +348,12 @@ class VariableCalculator:
             """
             处理回车键事件，添加新行
             """
-            idx = next((i for i, (tt, _, _) in enumerate(t.entries) if tt == tw), None)
-            if idx is not None:
-                self.add_input_row(t)
-                t.entries[idx+1][0].focus_set()
+            self.add_input_row(t)
+            # 设置焦点到新添加的行
+            for i, (text_widget, _, _) in enumerate(t.entries):
+                if text_widget == tw and i + 1 < len(t.entries):
+                    t.entries[i + 1][0].focus_set()
+                    break
             return "break"
 
         # 绑定回车键事件
